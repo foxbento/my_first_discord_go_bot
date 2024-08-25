@@ -17,9 +17,15 @@ import (
 // init loads the environment variables from a .env file.
 // It should be called automatically before the main function.
 func init() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
+	if _, err := os.Stat(".env"); err == nil {
+		err := godotenv.Load()
+		if err != nil {
+			log.Println("Error loading .env file:", err)
+		} else {
+			log.Println("Loaded environment variables from .env file")
+		}
+	} else {
+		log.Println("No .env file found, using system environment variables")
 	}
 }
 
