@@ -79,7 +79,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Check for Twitter/X links and modify them
 	// now only modifies if embed array is empty (thanks @tingerrrr)
 	modifiedContent := modifyTwitterLinks(m.Content)
-	if modifiedContent != m.Content && len(m.Embeds) == 0 {
+	if modifiedContent != m.Content {
 		_, err := s.ChannelMessageSend(m.ChannelID, modifiedContent)
 		if err != nil {
 			log.Println("Error sending modified message:", err)
