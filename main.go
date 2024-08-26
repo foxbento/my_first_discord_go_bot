@@ -77,8 +77,9 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	// Check for Twitter/X links and modify them
+	// now only modifies if embed array is empty (thanks @tingerrrr)
 	modifiedContent := modifyTwitterLinks(m.Content)
-	if modifiedContent != m.Content {
+	if modifiedContent != m.Content && len(m.Embeds) == 0 {
 		_, err := s.ChannelMessageSend(m.ChannelID, modifiedContent)
 		if err != nil {
 			log.Println("Error sending modified message:", err)
@@ -95,15 +96,35 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 //	output := modifyTwitterLinks(input)
 //	// output will be "Check out https://fxtwitter.com/user/status/123456"
 func modifyTwitterLinks(content string) string {
-	// Regex to match Twitter/X links
-	re := regexp.MustCompile(`https?://(www\.)?(twitter\.com|x\.com)/([^/]+)/status/(\d+)`)
-	
-	return re.ReplaceAllStringFunc(content, func(match string) string {
-		if strings.Contains(match, "twitter.com") {
-			return strings.Replace(match, "twitter.com", "fxtwitter.com", 1)
-		} else if strings.Contains(match, "x.com") {
-			return strings.Replace(match, "x.com", "fixupx.com", 1)
-		}
-		return match
-	})
+    // Define patterns for Twitter and X links, including those in angle brackets
+    pattern := `(<)?https?://(www\.)?(twitter\.com|x\.com)/[^/]+/status/\d+(\?[^\s<>]*)?([^<\s]*)>?`
+
+    re := regexp.MustCompile(pattern)
+    return re.ReplaceAllStringFunc(content, func(match string) string {
+        if strings.HasPrefix(match, "<") && strings.HasSuffix(match, ">") {
+            return match // Preserve links in angle brackets
+        }
+        return modifySingleLink(match)
+    })
+}
+
+func modifySingleLink(link string) string {
+    // Remove query parameters
+    if idx := strings.Index(link, "?"); idx != -1 {
+        link = link[:idx]
+    }
+
+    // Strip protocol and www subdomain
+    link = strings.TrimPrefix(link, "http://")
+    link = strings.TrimPrefix(link, "https://")
+    link = strings.TrimPrefix(link, "www.")
+
+    // Replace domain
+    if strings.HasPrefix(link, "twitter.com") {
+        link = "https://fxtwitter.com" + strings.TrimPrefix(link, "twitter.com")
+    } else if strings.HasPrefix(link, "x.com") {
+        link = "https://fixupx.com" + strings.TrimPrefix(link, "x.com")
+    }
+
+    return link
 }
