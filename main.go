@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
@@ -23,11 +22,7 @@ func init() {
 		err := godotenv.Load()
 		if err != nil {
 			log.Println("Error loading .env file:", err)
-		} else {
-			log.Println("Loaded environment variables from .env file")
 		}
-	} else {
-		log.Println("No .env file found, using system environment variables")
 	}
 }
 
@@ -81,53 +76,19 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
     // Check for Twitter/X links
     if containsTwitterLink(m.Content) {
-        // Wait for 3 seconds
-        time.Sleep(3 * time.Second)
-
-        // Fetch the message again to get updated embeds/attachments
-        updatedMessage, err := s.ChannelMessage(m.ChannelID, m.ID)
-        if err != nil {
-            log.Println("Error fetching updated message:", err)
-            return
-        }
-
-        // Log raw embed and attachment arrays
-        logRawEmbedsAndAttachments(updatedMessage.Embeds, updatedMessage.Attachments)
-
-        // Log detailed information for messages with Twitter links
-        logTwitterMessage(updatedMessage)
-
         // Check if the message has any valid Twitter embeds or attachments
-        hasValidPreview := hasValidTwitterPreview(updatedMessage)
-        log.Printf("Has valid Twitter preview: %v\n", hasValidPreview)
+        hasValidPreview := hasValidTwitterPreview(m)
 
-        // Check if there are embeds but they're all from abs.twimg.com
-        hasOnlyAbsTwimgEmbeds := len(updatedMessage.Embeds) > 0 && !hasValidPreview
-
-        if !hasValidPreview || hasOnlyAbsTwimgEmbeds {
-            log.Println("No valid Twitter preview found or only abs.twimg.com embeds, modifying Twitter link")
-            modifiedContent := modifyTwitterLinks(updatedMessage.Content)
+        if !hasValidPreview {
+            modifiedContent := modifyTwitterLinks(m.Content)
             
-            if modifiedContent != updatedMessage.Content {
+            if modifiedContent != m.Content {
                 _, err := s.ChannelMessageSend(m.ChannelID, modifiedContent)
                 if err != nil {
                     log.Println("Error sending modified message:", err)
                 }
             }
-        } else {
-            log.Println("Valid Twitter preview found, not modifying message")
         }
-    }
-}
-
-func logRawEmbedsAndAttachments(embeds []*discordgo.MessageEmbed, attachments []*discordgo.MessageAttachment) {
-    log.Printf("Raw Embed Array: %+v\n", embeds)
-    for i, embed := range embeds {
-        log.Printf("Embed %d raw data: %+v\n", i, embed)
-    }
-    log.Printf("Raw Attachment Array: %+v\n", attachments)
-    for i, attachment := range attachments {
-        log.Printf("Attachment %d raw data: %+v\n", i, attachment)
     }
 }
 
@@ -137,7 +98,7 @@ func containsTwitterLink(content string) bool {
     return match
 }
 
-func hasValidTwitterPreview(m *discordgo.Message) bool {
+func hasValidTwitterPreview(m *discordgo.MessageCreate) bool {
     // Check embeds
     for _, embed := range m.Embeds {
         if isWorkingTwitterEmbed(embed) {
@@ -172,7 +133,6 @@ func isWorkingTwitterEmbed(embed *discordgo.MessageEmbed) bool {
                     return true
                 }
             }
-            // If the URL is from abs.twimg.com, consider it invalid
             if strings.HasSuffix(u.Hostname(), "abs.twimg.com") {
                 return false
             }
@@ -188,7 +148,6 @@ func isWorkingTwitterEmbed(embed *discordgo.MessageEmbed) bool {
                     return true
                 }
             }
-            // If the URL is from abs.twimg.com, consider it invalid
             if strings.HasSuffix(u.Hostname(), "abs.twimg.com") {
                 return false
             }
@@ -204,7 +163,6 @@ func isWorkingTwitterEmbed(embed *discordgo.MessageEmbed) bool {
                     return true
                 }
             }
-            // If the URL is from abs.twimg.com, consider it invalid
             if strings.HasSuffix(u.Hostname(), "abs.twimg.com") {
                 return false
             }
@@ -229,42 +187,12 @@ func isWorkingTwitterAttachment(attachment *discordgo.MessageAttachment) bool {
                 return true
             }
         }
-        // If the URL is from abs.twimg.com, consider it invalid
         if strings.HasSuffix(u.Hostname(), "abs.twimg.com") {
             return false
         }
     }
 
     return false
-}
-
-func logTwitterMessage(m *discordgo.Message) {
-    log.Printf("Twitter link detected in message ID: %s\n", m.ID)
-    log.Printf("Author: %s (ID: %s)\n", m.Author.Username, m.Author.ID)
-    log.Printf("Channel ID: %s\n", m.ChannelID)
-    log.Printf("Content: %s\n", m.Content)
-    log.Printf("Timestamp: %s\n", m.Timestamp)
-    log.Printf("Number of embeds: %d\n", len(m.Embeds))
-    log.Printf("Number of attachments: %d\n", len(m.Attachments))
-    
-    for i, embed := range m.Embeds {
-        logEmbedDetails(i, embed)
-    }
-}
-
-func logEmbedDetails(index int, embed *discordgo.MessageEmbed) {
-    log.Printf("Embed %d details:\n", index)
-    log.Printf("  Type: %s\n", embed.Type)
-    log.Printf("  Title: %s\n", embed.Title)
-    log.Printf("  Description: %s\n", embed.Description)
-    log.Printf("  URL: %s\n", embed.URL)
-    if embed.Image != nil {
-        log.Printf("  Image URL: %s\n", embed.Image.URL)
-    }
-    if embed.Thumbnail != nil {
-        log.Printf("  Thumbnail URL: %s\n", embed.Thumbnail.URL)
-    }
-    log.Printf("  Is Working Twitter Embed: %v\n", isWorkingTwitterEmbed(embed))
 }
 
 // modifyTwitterLinks takes a string and replaces Twitter/X links with modified versions.
