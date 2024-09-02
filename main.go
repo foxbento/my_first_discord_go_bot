@@ -101,8 +101,11 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
         hasValidPreview := hasValidTwitterPreview(updatedMessage)
         log.Printf("Has valid Twitter preview: %v\n", hasValidPreview)
 
-        if !hasValidPreview {
-            log.Println("No valid Twitter preview found, modifying Twitter link")
+        // Check if there are embeds but they're all from abs.twimg.com
+        hasOnlyAbsTwimgEmbeds := len(updatedMessage.Embeds) > 0 && !hasValidPreview
+
+        if !hasValidPreview || hasOnlyAbsTwimgEmbeds {
+            log.Println("No valid Twitter preview found or only abs.twimg.com embeds, modifying Twitter link")
             modifiedContent := modifyTwitterLinks(updatedMessage.Content)
             
             if modifiedContent != updatedMessage.Content {
@@ -137,14 +140,14 @@ func containsTwitterLink(content string) bool {
 func hasValidTwitterPreview(m *discordgo.Message) bool {
     // Check embeds
     for _, embed := range m.Embeds {
-        if isTwitterEmbed(embed) {
+        if isWorkingTwitterEmbed(embed) {
             return true
         }
     }
 
     // Check attachments
     for _, attachment := range m.Attachments {
-        if isTwitterAttachment(attachment) {
+        if isWorkingTwitterAttachment(attachment) {
             return true
         }
     }
@@ -152,12 +155,11 @@ func hasValidTwitterPreview(m *discordgo.Message) bool {
     return false
 }
 
-func isTwitterEmbed(embed *discordgo.MessageEmbed) bool {
+func isWorkingTwitterEmbed(embed *discordgo.MessageEmbed) bool {
     // List of Twitter CDN domains
     twitterCDNs := []string{
         "pbs.twimg.com",
         "video.twimg.com",
-        "abs.twimg.com",
         "ton.twimg.com",
     }
 
@@ -169,6 +171,10 @@ func isTwitterEmbed(embed *discordgo.MessageEmbed) bool {
                 if strings.HasSuffix(u.Hostname(), cdn) {
                     return true
                 }
+            }
+            // If the URL is from abs.twimg.com, consider it invalid
+            if strings.HasSuffix(u.Hostname(), "abs.twimg.com") {
+                return false
             }
         }
     }
@@ -182,6 +188,10 @@ func isTwitterEmbed(embed *discordgo.MessageEmbed) bool {
                     return true
                 }
             }
+            // If the URL is from abs.twimg.com, consider it invalid
+            if strings.HasSuffix(u.Hostname(), "abs.twimg.com") {
+                return false
+            }
         }
     }
 
@@ -194,18 +204,21 @@ func isTwitterEmbed(embed *discordgo.MessageEmbed) bool {
                     return true
                 }
             }
+            // If the URL is from abs.twimg.com, consider it invalid
+            if strings.HasSuffix(u.Hostname(), "abs.twimg.com") {
+                return false
+            }
         }
     }
 
     return false
 }
 
-func isTwitterAttachment(attachment *discordgo.MessageAttachment) bool {
+func isWorkingTwitterAttachment(attachment *discordgo.MessageAttachment) bool {
     // List of Twitter CDN domains
     twitterCDNs := []string{
         "pbs.twimg.com",
         "video.twimg.com",
-        "abs.twimg.com",
         "ton.twimg.com",
     }
 
@@ -215,6 +228,10 @@ func isTwitterAttachment(attachment *discordgo.MessageAttachment) bool {
             if strings.HasSuffix(u.Hostname(), cdn) {
                 return true
             }
+        }
+        // If the URL is from abs.twimg.com, consider it invalid
+        if strings.HasSuffix(u.Hostname(), "abs.twimg.com") {
+            return false
         }
     }
 
@@ -247,7 +264,7 @@ func logEmbedDetails(index int, embed *discordgo.MessageEmbed) {
     if embed.Thumbnail != nil {
         log.Printf("  Thumbnail URL: %s\n", embed.Thumbnail.URL)
     }
-    log.Printf("  Is Twitter Embed: %v\n", isTwitterEmbed(embed))
+    log.Printf("  Is Working Twitter Embed: %v\n", isWorkingTwitterEmbed(embed))
 }
 
 // modifyTwitterLinks takes a string and replaces Twitter/X links with modified versions.
