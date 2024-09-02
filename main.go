@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"os/signal"
 	"regexp"
@@ -63,38 +64,148 @@ func main() {
 // messageCreate is the callback function for the MessageCreate event.
 // It handles incoming messages, responds to "hello", and modifies Twitter/X links.
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Ignore messages from the bot itself
-	if m.Author.ID == s.State.User.ID {
-		return
-	}
+    // Ignore messages from the bot itself
+    if m.Author.ID == s.State.User.ID {
+        return
+    }
 
-	// Respond to "hello" messages
-	if m.Content == "hello" {
-		_, err := s.ChannelMessageSend(m.ChannelID, "world!")
-		if err != nil {
-			log.Println("Error sending message:", err)
-		}
-	}
+    // Respond to "hello" messages
+    if m.Content == "hello" {
+        _, err := s.ChannelMessageSend(m.ChannelID, "world!")
+        if err != nil {
+            log.Println("Error sending message:", err)
+        }
+        return
+    }
 
-	// Check for Twitter/X links and modify them
-	// now only modifies if embed array is empty (thanks @tingerrrr)
-	modifiedContent := modifyTwitterLinks(m.Content)
-	if modifiedContent != m.Content {
-		_, err := s.ChannelMessageSend(m.ChannelID, modifiedContent)
-		if err != nil {
-			log.Println("Error sending modified message:", err)
-		}
-	}
+    // Check for Twitter/X links
+    if containsTwitterLink(m.Content) {
+        // Log raw embed array
+        logRawEmbeds(m.Embeds)
+
+        // Log detailed information for messages with Twitter links
+        logTwitterMessage(m)
+
+        // Check if the message has any valid Twitter embeds
+        hasValidEmbed := hasValidTwitterEmbed(m.Embeds)
+        log.Printf("Has valid Twitter embed: %v\n", hasValidEmbed)
+
+        if !hasValidEmbed {
+            log.Println("No valid Twitter embed found, modifying Twitter link")
+            modifiedContent := modifyTwitterLinks(m.Content)
+            
+            if modifiedContent != m.Content {
+                _, err := s.ChannelMessageSend(m.ChannelID, modifiedContent)
+                if err != nil {
+                    log.Println("Error sending modified message:", err)
+                }
+            }
+        } else {
+            log.Println("Valid Twitter embed found, not modifying message")
+        }
+    }
+}
+
+func logRawEmbeds(embeds []*discordgo.MessageEmbed) {
+    log.Printf("Raw Embed Array: %+v\n", embeds)
+    for i, embed := range embeds {
+        log.Printf("Embed %d raw data: %+v\n", i, embed)
+    }
+}
+
+func containsTwitterLink(content string) bool {
+    pattern := `https?:\/\/(www\.)?(twitter\.com|x\.com)\/[a-zA-Z0-9_]+\/status\/[0-9]+`
+    match, _ := regexp.MatchString(pattern, content)
+    return match
+}
+
+func hasValidTwitterEmbed(embeds []*discordgo.MessageEmbed) bool {
+    for _, embed := range embeds {
+        if isTwitterEmbed(embed) {
+            return true
+        }
+    }
+    return false
+}
+
+func isTwitterEmbed(embed *discordgo.MessageEmbed) bool {
+    // List of Twitter CDN domains
+    twitterCDNs := []string{
+        "pbs.twimg.com",
+        "video.twimg.com",
+        "abs.twimg.com",
+        "ton.twimg.com",
+    }
+
+    // Check embed URL
+    if embed.URL != "" {
+        u, err := url.Parse(embed.URL)
+        if err == nil {
+            for _, cdn := range twitterCDNs {
+                if strings.HasSuffix(u.Hostname(), cdn) {
+                    return true
+                }
+            }
+        }
+    }
+
+    // Check image URL
+    if embed.Image != nil && embed.Image.URL != "" {
+        u, err := url.Parse(embed.Image.URL)
+        if err == nil {
+            for _, cdn := range twitterCDNs {
+                if strings.HasSuffix(u.Hostname(), cdn) {
+                    return true
+                }
+            }
+        }
+    }
+
+    // Check thumbnail URL
+    if embed.Thumbnail != nil && embed.Thumbnail.URL != "" {
+        u, err := url.Parse(embed.Thumbnail.URL)
+        if err == nil {
+            for _, cdn := range twitterCDNs {
+                if strings.HasSuffix(u.Hostname(), cdn) {
+                    return true
+                }
+            }
+        }
+    }
+
+    return false
+}
+
+func logTwitterMessage(m *discordgo.MessageCreate) {
+    log.Printf("Twitter link detected in message ID: %s\n", m.ID)
+    log.Printf("Author: %s (ID: %s)\n", m.Author.Username, m.Author.ID)
+    log.Printf("Channel ID: %s\n", m.ChannelID)
+    log.Printf("Content: %s\n", m.Content)
+    log.Printf("Timestamp: %s\n", m.Timestamp)
+    log.Printf("Number of embeds: %d\n", len(m.Embeds))
+    
+    for i, embed := range m.Embeds {
+        logEmbedDetails(i, embed)
+    }
+}
+
+func logEmbedDetails(index int, embed *discordgo.MessageEmbed) {
+    log.Printf("Embed %d details:\n", index)
+    log.Printf("  Type: %s\n", embed.Type)
+    log.Printf("  Title: %s\n", embed.Title)
+    log.Printf("  Description: %s\n", embed.Description)
+    log.Printf("  URL: %s\n", embed.URL)
+    if embed.Image != nil {
+        log.Printf("  Image URL: %s\n", embed.Image.URL)
+    }
+    if embed.Thumbnail != nil {
+        log.Printf("  Thumbnail URL: %s\n", embed.Thumbnail.URL)
+    }
+    log.Printf("  Is Twitter Embed: %v\n", isTwitterEmbed(embed))
 }
 
 // modifyTwitterLinks takes a string and replaces Twitter/X links with modified versions.
 // It changes "twitter.com" to "fxtwitter.com" and "x.com" to "fixupx.com".
-//
-// Example:
-//
-//	input := "Check out https://twitter.com/user/status/123456"
-//	output := modifyTwitterLinks(input)
-//	// output will be "Check out https://fxtwitter.com/user/status/123456"
 func modifyTwitterLinks(content string) string {
     // Define patterns for Twitter and X links, including those in angle brackets
     pattern := `(<)?https?://(www\.)?(twitter\.com|x\.com)/[^/]+/status/\d+(\?[^\s<>]*)?([^<\s]*)>?`
