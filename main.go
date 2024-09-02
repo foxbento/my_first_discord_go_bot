@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
@@ -80,36 +81,50 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
     // Check for Twitter/X links
     if containsTwitterLink(m.Content) {
-        // Log raw embed array
-        logRawEmbeds(m.Embeds)
+        // Wait for 3 seconds
+        time.Sleep(3 * time.Second)
+
+        // Fetch the message again to get updated embeds/attachments
+        updatedMessage, err := s.ChannelMessage(m.ChannelID, m.ID)
+        if err != nil {
+            log.Println("Error fetching updated message:", err)
+            return
+        }
+
+        // Log raw embed and attachment arrays
+        logRawEmbedsAndAttachments(updatedMessage.Embeds, updatedMessage.Attachments)
 
         // Log detailed information for messages with Twitter links
-        logTwitterMessage(m)
+        logTwitterMessage(updatedMessage)
 
-        // Check if the message has any valid Twitter embeds
-        hasValidEmbed := hasValidTwitterEmbed(m.Embeds)
-        log.Printf("Has valid Twitter embed: %v\n", hasValidEmbed)
+        // Check if the message has any valid Twitter embeds or attachments
+        hasValidPreview := hasValidTwitterPreview(updatedMessage)
+        log.Printf("Has valid Twitter preview: %v\n", hasValidPreview)
 
-        if !hasValidEmbed {
-            log.Println("No valid Twitter embed found, modifying Twitter link")
-            modifiedContent := modifyTwitterLinks(m.Content)
+        if !hasValidPreview {
+            log.Println("No valid Twitter preview found, modifying Twitter link")
+            modifiedContent := modifyTwitterLinks(updatedMessage.Content)
             
-            if modifiedContent != m.Content {
+            if modifiedContent != updatedMessage.Content {
                 _, err := s.ChannelMessageSend(m.ChannelID, modifiedContent)
                 if err != nil {
                     log.Println("Error sending modified message:", err)
                 }
             }
         } else {
-            log.Println("Valid Twitter embed found, not modifying message")
+            log.Println("Valid Twitter preview found, not modifying message")
         }
     }
 }
 
-func logRawEmbeds(embeds []*discordgo.MessageEmbed) {
+func logRawEmbedsAndAttachments(embeds []*discordgo.MessageEmbed, attachments []*discordgo.MessageAttachment) {
     log.Printf("Raw Embed Array: %+v\n", embeds)
     for i, embed := range embeds {
         log.Printf("Embed %d raw data: %+v\n", i, embed)
+    }
+    log.Printf("Raw Attachment Array: %+v\n", attachments)
+    for i, attachment := range attachments {
+        log.Printf("Attachment %d raw data: %+v\n", i, attachment)
     }
 }
 
@@ -119,12 +134,21 @@ func containsTwitterLink(content string) bool {
     return match
 }
 
-func hasValidTwitterEmbed(embeds []*discordgo.MessageEmbed) bool {
-    for _, embed := range embeds {
+func hasValidTwitterPreview(m *discordgo.Message) bool {
+    // Check embeds
+    for _, embed := range m.Embeds {
         if isTwitterEmbed(embed) {
             return true
         }
     }
+
+    // Check attachments
+    for _, attachment := range m.Attachments {
+        if isTwitterAttachment(attachment) {
+            return true
+        }
+    }
+
     return false
 }
 
@@ -176,13 +200,35 @@ func isTwitterEmbed(embed *discordgo.MessageEmbed) bool {
     return false
 }
 
-func logTwitterMessage(m *discordgo.MessageCreate) {
+func isTwitterAttachment(attachment *discordgo.MessageAttachment) bool {
+    // List of Twitter CDN domains
+    twitterCDNs := []string{
+        "pbs.twimg.com",
+        "video.twimg.com",
+        "abs.twimg.com",
+        "ton.twimg.com",
+    }
+
+    u, err := url.Parse(attachment.URL)
+    if err == nil {
+        for _, cdn := range twitterCDNs {
+            if strings.HasSuffix(u.Hostname(), cdn) {
+                return true
+            }
+        }
+    }
+
+    return false
+}
+
+func logTwitterMessage(m *discordgo.Message) {
     log.Printf("Twitter link detected in message ID: %s\n", m.ID)
     log.Printf("Author: %s (ID: %s)\n", m.Author.Username, m.Author.ID)
     log.Printf("Channel ID: %s\n", m.ChannelID)
     log.Printf("Content: %s\n", m.Content)
     log.Printf("Timestamp: %s\n", m.Timestamp)
     log.Printf("Number of embeds: %d\n", len(m.Embeds))
+    log.Printf("Number of attachments: %d\n", len(m.Attachments))
     
     for i, embed := range m.Embeds {
         logEmbedDetails(i, embed)
