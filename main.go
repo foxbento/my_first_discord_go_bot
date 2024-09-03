@@ -76,6 +76,9 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
     // Check for Twitter/X links
     if containsTwitterLink(m.Content) {
+        // Log detailed information about the message and its embeds
+        logTwitterMessage(m)
+
         // Check if the message has any valid Twitter embeds or attachments
         hasValidPreview := hasValidTwitterPreview(m)
 
@@ -89,16 +92,42 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
                 }
             }
         }
-        logTwitterPost(m)
     }
 }
 
-// logTwitterPost logs information about a Twitter post, including the number of embedded images
-func logTwitterPost(m *discordgo.MessageCreate) {
+// logTwitterMessage logs detailed information about a message containing a Twitter link
+func logTwitterMessage(m *discordgo.MessageCreate) {
     twitterLinks := extractTwitterLinks(m.Content)
+    
     for _, link := range twitterLinks {
-        embedCount := countTwitterEmbeds(m)
-        log.Printf("Twitter post: %s, Embedded images: %d\n", link, embedCount)
+        log.Printf("Original Twitter Link: %s\n", link)
+        log.Printf("Total Embeds in Message: %d\n", len(m.Embeds))
+        
+        for i, embed := range m.Embeds {
+            log.Printf("Embed %d:\n", i+1)
+            log.Printf("  Type: %s\n", embed.Type)
+            log.Printf("  Title: %s\n", embed.Title)
+            log.Printf("  Description: %s\n", embed.Description)
+            
+            if embed.Image != nil {
+                log.Printf("  Image URL: %s\n", embed.Image.URL)
+            }
+            
+            if embed.Thumbnail != nil {
+                log.Printf("  Thumbnail URL: %s\n", embed.Thumbnail.URL)
+            }
+            
+            log.Printf("  Fields: %d\n", len(embed.Fields))
+        }
+        
+        log.Printf("Total Attachments in Message: %d\n", len(m.Attachments))
+        
+        for i, attachment := range m.Attachments {
+            log.Printf("Attachment %d:\n", i+1)
+            log.Printf("  Filename: %s\n", attachment.Filename)
+            log.Printf("  URL: %s\n", attachment.URL)
+            log.Printf("  Size: %d bytes\n", attachment.Size)
+        }
     }
 }
 
@@ -112,22 +141,6 @@ func extractTwitterLinks(content string) []string {
     pattern := `https?://(www\.)?(twitter\.com|x\.com)/[^/]+/status/\d+`
     re := regexp.MustCompile(pattern)
     return re.FindAllString(content, -1)
-}
-
-// countTwitterEmbeds counts the number of valid Twitter embeds in a message
-func countTwitterEmbeds(m *discordgo.MessageCreate) int {
-    count := 0
-    for _, embed := range m.Embeds {
-        if isWorkingTwitterEmbed(embed) {
-            count++
-        }
-    }
-    for _, attachment := range m.Attachments {
-        if isWorkingTwitterAttachment(attachment) {
-            count++
-        }
-    }
-    return count
 }
 
 func hasValidTwitterPreview(m *discordgo.MessageCreate) bool {
