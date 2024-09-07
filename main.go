@@ -103,11 +103,19 @@ func logTwitterMessage(m *discordgo.MessageCreate) {
         log.Printf("Original Twitter Link: %s\n", link)
         log.Printf("Total Embeds in Message: %d\n", len(m.Embeds))
         
+        hasVideo := false
         for i, embed := range m.Embeds {
             log.Printf("Embed %d:\n", i+1)
             log.Printf("  Type: %s\n", embed.Type)
             log.Printf("  Title: %s\n", embed.Title)
             log.Printf("  Description: %s\n", embed.Description)
+            log.Printf("  URL: %s\n", embed.URL)
+            
+            if embed.Video != nil {
+                log.Printf("  Video URL: %s\n", embed.Video.URL)
+                log.Printf("  Video Height: %d, Width: %d\n", embed.Video.Height, embed.Video.Width)
+                hasVideo = true
+            }
             
             if embed.Image != nil {
                 log.Printf("  Image URL: %s\n", embed.Image.URL)
@@ -118,7 +126,12 @@ func logTwitterMessage(m *discordgo.MessageCreate) {
             }
             
             log.Printf("  Fields: %d\n", len(embed.Fields))
+            for j, field := range embed.Fields {
+                log.Printf("    Field %d: %s = %s\n", j+1, field.Name, field.Value)
+            }
         }
+        
+        log.Printf("Message contains video: %v\n", hasVideo)
         
         log.Printf("Total Attachments in Message: %d\n", len(m.Attachments))
         
@@ -127,6 +140,7 @@ func logTwitterMessage(m *discordgo.MessageCreate) {
             log.Printf("  Filename: %s\n", attachment.Filename)
             log.Printf("  URL: %s\n", attachment.URL)
             log.Printf("  Size: %d bytes\n", attachment.Size)
+            log.Printf("  Width: %d, Height: %d\n", attachment.Width, attachment.Height)
         }
     }
 }
@@ -210,6 +224,18 @@ func isWorkingTwitterEmbed(embed *discordgo.MessageEmbed) bool {
             }
             if strings.HasSuffix(u.Hostname(), "abs.twimg.com") {
                 return false
+            }
+        }
+    }
+
+    // Check video URL
+    if embed.Video != nil && embed.Video.URL != "" {
+        u, err := url.Parse(embed.Video.URL)
+        if err == nil {
+            for _, cdn := range twitterCDNs {
+                if strings.HasSuffix(u.Hostname(), cdn) {
+                    return true
+                }
             }
         }
     }
