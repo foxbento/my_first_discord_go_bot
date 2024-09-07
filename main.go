@@ -129,6 +129,15 @@ func logTwitterMessage(m *discordgo.MessageCreate) {
             for j, field := range embed.Fields {
                 log.Printf("    Field %d: %s = %s\n", j+1, field.Name, field.Value)
             }
+
+            if hasTwitterVideoThumb(embed) {
+                log.Printf("  Contains amplify_video_thumb\n")
+                hasVideo = true
+            }
+
+            if isAbsTwimgURL(embed.URL) {
+                log.Printf("  Contains abs.twimg.com URL (invalid preview)\n")
+            }
         }
         
         log.Printf("Message contains video: %v\n", hasVideo)
@@ -141,6 +150,12 @@ func logTwitterMessage(m *discordgo.MessageCreate) {
             log.Printf("  URL: %s\n", attachment.URL)
             log.Printf("  Size: %d bytes\n", attachment.Size)
             log.Printf("  Width: %d, Height: %d\n", attachment.Width, attachment.Height)
+            if strings.Contains(attachment.URL, "pbs.twimg.com") && strings.Contains(attachment.URL, "amplify_video_thumb") {
+                log.Printf("  Contains amplify_video_thumb\n")
+            }
+            if isAbsTwimgURL(attachment.URL) {
+                log.Printf("  Contains abs.twimg.com URL (invalid preview)\n")
+            }
         }
     }
 }
@@ -166,11 +181,11 @@ func hasValidTwitterPreview(m *discordgo.MessageCreate) bool {
     }
 
     // Check attachments
-    // for _, attachment := range m.Attachments {
-    //     if isWorkingTwitterAttachment(attachment) {
-    //         return true
-    //     }
-    // }
+    for _, attachment := range m.Attachments {
+        if isWorkingTwitterAttachment(attachment) {
+            return true
+        }
+    }
 
     return false
 }
@@ -183,61 +198,36 @@ func isWorkingTwitterEmbed(embed *discordgo.MessageEmbed) bool {
         "ton.twimg.com",
     }
 
-    // Check embed URL
-    if embed.URL != "" {
-        u, err := url.Parse(embed.URL)
-        if err == nil {
-            for _, cdn := range twitterCDNs {
-                if strings.HasSuffix(u.Hostname(), cdn) {
-                    return true
-                }
-            }
-            if strings.HasSuffix(u.Hostname(), "abs.twimg.com") {
-                return false
+    checkURL := func(urlStr string) bool {
+        u, err := url.Parse(urlStr)
+        if err != nil {
+            return false
+        }
+        for _, cdn := range twitterCDNs {
+            if strings.HasSuffix(u.Hostname(), cdn) {
+                return true
             }
         }
+        if strings.HasSuffix(u.Hostname(), "abs.twimg.com") {
+            return false
+        }
+        return strings.Contains(urlStr, "amplify_video_thumb")
     }
 
-    // Check image URL
-    if embed.Image != nil && embed.Image.URL != "" {
-        u, err := url.Parse(embed.Image.URL)
-        if err == nil {
-            for _, cdn := range twitterCDNs {
-                if strings.HasSuffix(u.Hostname(), cdn) {
-                    return true
-                }
-            }
-            if strings.HasSuffix(u.Hostname(), "abs.twimg.com") {
-                return false
-            }
-        }
+    if embed.URL != "" && checkURL(embed.URL) {
+        return true
     }
 
-    // Check thumbnail URL
-    if embed.Thumbnail != nil && embed.Thumbnail.URL != "" {
-        u, err := url.Parse(embed.Thumbnail.URL)
-        if err == nil {
-            for _, cdn := range twitterCDNs {
-                if strings.HasSuffix(u.Hostname(), cdn) {
-                    return true
-                }
-            }
-            if strings.HasSuffix(u.Hostname(), "abs.twimg.com") {
-                return false
-            }
-        }
+    if embed.Image != nil && embed.Image.URL != "" && checkURL(embed.Image.URL) {
+        return true
     }
 
-    // Check video URL
-    if embed.Video != nil && embed.Video.URL != "" {
-        u, err := url.Parse(embed.Video.URL)
-        if err == nil {
-            for _, cdn := range twitterCDNs {
-                if strings.HasSuffix(u.Hostname(), cdn) {
-                    return true
-                }
-            }
-        }
+    if embed.Thumbnail != nil && embed.Thumbnail.URL != "" && checkURL(embed.Thumbnail.URL) {
+        return true
+    }
+
+    if embed.Video != nil && embed.Video.URL != "" && checkURL(embed.Video.URL) {
+        return true
     }
 
     return false
@@ -252,18 +242,49 @@ func isWorkingTwitterAttachment(attachment *discordgo.MessageAttachment) bool {
     }
 
     u, err := url.Parse(attachment.URL)
-    if err == nil {
-        for _, cdn := range twitterCDNs {
-            if strings.HasSuffix(u.Hostname(), cdn) {
-                return true
-            }
+    if err != nil {
+        return false
+    }
+    
+    for _, cdn := range twitterCDNs {
+        if strings.HasSuffix(u.Hostname(), cdn) {
+            return true
         }
-        if strings.HasSuffix(u.Hostname(), "abs.twimg.com") {
-            return false
-        }
+    }
+    
+    if strings.HasSuffix(u.Hostname(), "abs.twimg.com") {
+        return false
+    }
+    
+    return strings.Contains(attachment.URL, "amplify_video_thumb")
+}
+
+func hasTwitterVideoThumb(embed *discordgo.MessageEmbed) bool {
+    checkURL := func(urlStr string) bool {
+        return strings.Contains(urlStr, "pbs.twimg.com") && strings.Contains(urlStr, "amplify_video_thumb")
+    }
+
+    if embed.URL != "" && checkURL(embed.URL) {
+        return true
+    }
+
+    if embed.Image != nil && embed.Image.URL != "" && checkURL(embed.Image.URL) {
+        return true
+    }
+
+    if embed.Thumbnail != nil && embed.Thumbnail.URL != "" && checkURL(embed.Thumbnail.URL) {
+        return true
     }
 
     return false
+}
+
+func isAbsTwimgURL(urlStr string) bool {
+    u, err := url.Parse(urlStr)
+    if err != nil {
+        return false
+    }
+    return strings.HasSuffix(u.Hostname(), "abs.twimg.com")
 }
 
 // modifyTwitterLinks takes a string and replaces Twitter/X links with modified versions.
