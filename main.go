@@ -166,11 +166,11 @@ func hasValidTwitterPreview(m *discordgo.MessageCreate) bool {
     }
 
     // Check attachments
-    for _, attachment := range m.Attachments {
-        if isWorkingTwitterAttachment(attachment) {
-            return true
-        }
-    }
+    // for _, attachment := range m.Attachments {
+    //     if isWorkingTwitterAttachment(attachment) {
+    //         return true
+    //     }
+    // }
 
     return false
 }
