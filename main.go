@@ -82,6 +82,14 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
         // Check if the message has any valid Twitter embeds or attachments
         hasValidPreview := hasValidTwitterPreview(m)
 
+        // New: Check if the message contains a video link
+        hasVideoLink := hasTwitterVideoLink(m)
+
+        // Log all messages with embeds
+        if len(m.Embeds) > 0 {
+            logMessageEmbeds(m)
+        }
+
         if !hasValidPreview {
             modifiedContent := modifyTwitterLinks(m.Content)
             
@@ -92,6 +100,64 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
                 }
             }
         }
+
+        // Log whether the message contains a video link
+        log.Printf("Message contains video link: %v\n", hasVideoLink)
+    }
+}
+
+// New function to log all embeds in a message
+func logMessageEmbeds(m *discordgo.MessageCreate) {
+    log.Printf("Logging embeds for message ID: %s\n", m.ID)
+    log.Printf("Message content: %s\n", m.Content)
+    log.Printf("Total Embeds in Message: %d\n", len(m.Embeds))
+
+    for i, embed := range m.Embeds {
+        log.Printf("Embed %d:\n", i+1)
+        logEmbed(embed)
+    }
+}
+
+// Helper function to log details of a single embed
+func logEmbed(embed *discordgo.MessageEmbed) {
+    log.Printf("  Type: %s\n", embed.Type)
+    log.Printf("  Title: %s\n", embed.Title)
+    log.Printf("  Description: %s\n", embed.Description)
+    log.Printf("  URL: %s\n", embed.URL)
+    log.Printf("  Timestamp: %s\n", embed.Timestamp)
+    log.Printf("  Color: %d\n", embed.Color)
+    
+    if embed.Footer != nil {
+        log.Printf("  Footer: %s\n", embed.Footer.Text)
+    }
+    
+    if embed.Image != nil {
+        log.Printf("  Image URL: %s\n", embed.Image.URL)
+    }
+    
+    if embed.Thumbnail != nil {
+        log.Printf("  Thumbnail URL: %s\n", embed.Thumbnail.URL)
+    }
+
+    if embed.Video != nil {
+        log.Printf("  Video URL: %s\n", embed.Video.URL)
+        log.Printf("  Video Height: %d\n", embed.Video.Height)
+        log.Printf("  Video Width: %d\n", embed.Video.Width)
+    }
+
+    if embed.Provider != nil {
+        log.Printf("  Provider Name: %s\n", embed.Provider.Name)
+        log.Printf("  Provider URL: %s\n", embed.Provider.URL)
+    }
+
+    if embed.Author != nil {
+        log.Printf("  Author Name: %s\n", embed.Author.Name)
+        log.Printf("  Author URL: %s\n", embed.Author.URL)
+    }
+    
+    log.Printf("  Fields: %d\n", len(embed.Fields))
+    for j, field := range embed.Fields {
+        log.Printf("    Field %d: %s = %s\n", j+1, field.Name, field.Value)
     }
 }
 
@@ -129,6 +195,32 @@ func logTwitterMessage(m *discordgo.MessageCreate) {
             log.Printf("  Size: %d bytes\n", attachment.Size)
         }
     }
+}
+
+// New function to check for video links in Twitter embeds
+func hasTwitterVideoLink(m *discordgo.MessageCreate) bool {
+    for _, embed := range m.Embeds {
+        if embed.Video != nil && embed.Video.URL != "" {
+            u, err := url.Parse(embed.Video.URL)
+            if err == nil {
+                ext := strings.ToLower(u.Path[strings.LastIndex(u.Path, ".")+1:])
+                if ext == "mp4" || ext == "gif" {
+                    log.Printf("Found video link: %s\n", embed.Video.URL)
+                    return true
+                }
+            }
+        }
+    }
+
+    // Check for video links in the message content
+    videoPattern := `https?://(?:www\.)?(?:twitter\.com|x\.com)/\S+/video/\d+`
+    re := regexp.MustCompile(videoPattern)
+    if re.MatchString(m.Content) {
+        log.Printf("Found potential video link in content: %s\n", m.Content)
+        return true
+    }
+
+    return false
 }
 
 func containsTwitterLink(content string) bool {
