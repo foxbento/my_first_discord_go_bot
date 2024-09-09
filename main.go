@@ -188,6 +188,9 @@ func isWorkingTwitterEmbed(embed *discordgo.MessageEmbed) bool {
     if embed.Image != nil && embed.Image.URL != "" {
         u, err := url.Parse(embed.Image.URL)
         if err == nil {
+            if strings.Contains(embed.Image.URL, "tweet_video_thumb") {
+                return false
+            }
             for _, cdn := range twitterCDNs {
                 if strings.HasSuffix(u.Hostname(), cdn) {
                     return true
@@ -204,8 +207,7 @@ func isWorkingTwitterEmbed(embed *discordgo.MessageEmbed) bool {
         u, err := url.Parse(embed.Thumbnail.URL)
         if err == nil {
             // Check for tweet_video_thumb or amplify_video_thumb in the thumbnail URL
-            if strings.Contains(embed.Thumbnail.URL, "tweet_video_thumb") || 
-                    strings.Contains(embed.Thumbnail.URL, "amplify_video_thumb") {
+            if strings.Contains(embed.Thumbnail.URL, "tweet_video_thumb") {
                     return false
                 }
             for _, cdn := range twitterCDNs {
