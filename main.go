@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
@@ -79,19 +80,37 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
         // Log detailed information about the message and its embeds
         logTwitterMessage(m)
 
-        // Check if the message has any valid Twitter embeds or attachments
-        hasValidPreview := hasValidTwitterPreview(m)
+        // Discord fetches link previews asynchronously and edits the message in
+        // afterward, so embeds are almost never present yet at this point. Wait
+        // a bit, then re-check the message before deciding to intervene.
+        go checkAndFixTwitterEmbed(s, m.ChannelID, m.ID)
+    }
+}
 
-        if !hasValidPreview {
-            modifiedContent := modifyTwitterLinks(m.Content)
-            
-            if modifiedContent != m.Content {
-                _, err := s.ChannelMessageSend(m.ChannelID, modifiedContent)
-                if err != nil {
-                    log.Println("Error sending modified message:", err)
-                }
-            }
-        }
+// checkAndFixTwitterEmbed waits for Discord's own link preview to have a chance
+// to load, then re-fetches the message. If Discord still hasn't produced a
+// working Twitter/X embed by then, it posts a fixed link (fxtwitter/fixupx).
+func checkAndFixTwitterEmbed(s *discordgo.Session, channelID, messageID string) {
+    time.Sleep(2 * time.Second)
+
+    msg, err := s.ChannelMessage(channelID, messageID)
+    if err != nil {
+        log.Println("Error re-fetching message:", err)
+        return
+    }
+
+    if hasValidTwitterPreview(msg.Embeds, msg.Attachments) {
+        // Discord embedded it fine on its own; nothing to do.
+        return
+    }
+
+    modifiedContent := modifyTwitterLinks(msg.Content)
+    if modifiedContent == msg.Content {
+        return
+    }
+
+    if _, err := s.ChannelMessageSend(channelID, modifiedContent); err != nil {
+        log.Println("Error sending modified message:", err)
     }
 }
 
@@ -143,16 +162,16 @@ func extractTwitterLinks(content string) []string {
     return re.FindAllString(content, -1)
 }
 
-func hasValidTwitterPreview(m *discordgo.MessageCreate) bool {
+func hasValidTwitterPreview(embeds []*discordgo.MessageEmbed, attachments []*discordgo.MessageAttachment) bool {
     // Check embeds
-    for _, embed := range m.Embeds {
+    for _, embed := range embeds {
         if isWorkingTwitterEmbed(embed) {
             return true
         }
     }
 
     // Check attachments
-    for _, attachment := range m.Attachments {
+    for _, attachment := range attachments {
         if isWorkingTwitterAttachment(attachment) {
             return true
         }
